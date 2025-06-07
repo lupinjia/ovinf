@@ -127,6 +127,30 @@ bool HumanoidWalkPolicy::WarmUp(ProprioceptiveObservation<float> const &obs_pack
 
 bool HumanoidWalkPolicy::InferUnsync(
     ProprioceptiveObservation<float> const &obs_pack) {
+  
+  // change phase_ratio and theta according to vel command
+  if(fabs(obs_pack.command(0)) <= 0.1 && fabs(obs_pack.command(1)) <= 0.1 && fabs(obs_pack.command(2)) <= 0.1)
+  { // stand gait
+    theta_left_ = 0.0;
+    theta_right_ = 0.0;
+    phase_ratio_(0) = 0.0;
+    phase_ratio_(1) = 1.0;
+  }
+  else if((fabs(obs_pack.command(0)) > 0.1 && fabs(obs_pack.command(0)) <= 1.0) | 
+           fabs(obs_pack.command(1)) > 0.1 | fabs(obs_pack.command(2)) > 0.1)
+  { // walk gait
+    theta_left_ = 0.5;
+    theta_right_ = 0.0;
+    phase_ratio_(0) = 0.4;
+    phase_ratio_(1) = 0.6;
+  }
+  else if(fabs(obs_pack.command(0)) > 1.0)
+  { // run gait
+    theta_left_ = 0.5;
+    theta_right_ = 0.0;
+    phase_ratio_(0) = 0.6;
+    phase_ratio_(1) = 0.4;
+  }
   // calc clock_input
   gait_time_ += control_dt_;
   if (gait_time_ > (gait_period_ + (control_dt_ / 2.0))) {
@@ -139,9 +163,34 @@ bool HumanoidWalkPolicy::InferUnsync(
   VectorT obs(single_obs_size_);
   obs.setZero();
   VectorT command_scaled(3);
-  command_scaled.segment(0, 2) =
-      obs_pack.command.segment(0, 2) * obs_scale_lin_vel_;
-  command_scaled(2) = obs_pack.command(2) * obs_scale_ang_vel_;
+  // eliminate small commands
+  if(fabs(obs_pack.command(0)) <= 0.1)
+  {
+    command_scaled(0) = 0.0;
+  }
+  else
+  {
+    command_scaled(0) = obs_pack.command(0) * obs_scale_lin_vel_;
+  }
+  if(fabs(obs_pack.command(1)) <= 0.1)
+  {
+    command_scaled(1) = 0.0;
+  }
+  else
+  {
+    command_scaled(1) = obs_pack.command(1) * obs_scale_lin_vel_;
+  }
+  if(fabs(obs_pack.command(2)) <= 0.1)
+  {
+    command_scaled(2) = 0.0;
+  }
+  else
+  {
+    command_scaled(2) = obs_pack.command(2) * obs_scale_ang_vel_;
+  }
+  // command_scaled.segment(0, 2) =
+  //     obs_pack.command.segment(0, 2) * obs_scale_lin_vel_;
+  // command_scaled(2) = obs_pack.command(2) * obs_scale_ang_vel_;
   obs.segment(0, 3) = command_scaled * obs_scale_command_;
   obs.segment(3, 12) =
       (obs_pack.joint_pos - joint_default_position_) * obs_scale_dof_pos_;
