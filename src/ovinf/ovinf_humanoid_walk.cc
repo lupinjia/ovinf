@@ -16,19 +16,6 @@ HumanoidWalkPolicy::HumanoidWalkPolicy(const YAML::Node &config) : BasePolicy(co
     joint_names_[name.as<std::string>()] = joint_counter++;
   }
 
-  // gait params
-  gait_period_ = config["gait_period"].as<float>();
-  gait_time_ = 0.0;
-  phi_ = 0.0;
-  control_dt_ = config["control_dt"].as<float>();
-  num_cycle_timesteps_ = gait_period_ / control_dt_;
-  theta_left_ = config["theta_left"].as<float>();
-  theta_right_ = config["theta_right"].as<float>();
-  phase_ratio_ = VectorT(2);
-  phase_ratio_(0) = config["swing_phase_ratio"].as<float>();
-  phase_ratio_(1) = config["stance_phase_ratio"].as<float>();
-  clock_input_ = VectorT(2);
-  clock_input_.setZero();
   single_obs_size_ = config["single_obs_size"].as<size_t>();
   obs_buffer_size_ = config["obs_buffer_size"].as<size_t>();
   action_size_ = config["action_size"].as<size_t>();
@@ -80,11 +67,6 @@ HumanoidWalkPolicy::HumanoidWalkPolicy(const YAML::Node &config) : BasePolicy(co
 
 bool HumanoidWalkPolicy::WarmUp(ProprioceptiveObservation<float> const &obs_pack) {
 
-  // calc clock_input
-  gait_time_ = 0.0;
-  phi_ = 0.0;
-  clock_input_(0) = sin(2 * M_PI * (phi_+theta_left_) / num_cycle_timesteps_);
-  clock_input_(1) = sin(2 * M_PI * (phi_+theta_right_) / num_cycle_timesteps_);
 
   VectorT obs(single_obs_size_);
   obs.setZero();
@@ -99,8 +81,6 @@ bool HumanoidWalkPolicy::WarmUp(ProprioceptiveObservation<float> const &obs_pack
   obs.segment(27, 12) = last_action_;
   obs.segment(39, 3) = obs_pack.ang_vel * obs_scale_ang_vel_;
   obs.segment(42, 3) = obs_pack.proj_gravity * obs_scale_proj_gravity_;
-  obs.segment(45, 2) = clock_input_;
-  obs.segment(47, 2) = phase_ratio_;
 
   if (!inference_done_.load()) {
     input_queue_.enqueue(obs);
@@ -127,39 +107,6 @@ bool HumanoidWalkPolicy::WarmUp(ProprioceptiveObservation<float> const &obs_pack
 
 bool HumanoidWalkPolicy::InferUnsync(
     ProprioceptiveObservation<float> const &obs_pack) {
-  
-  // change phase_ratio and theta according to vel command
-  if(fabs(obs_pack.command(0)) <= 0.1 && fabs(obs_pack.command(1)) <= 0.1 && fabs(obs_pack.command(2)) <= 0.1)
-  { // stand gait
-    theta_left_ = 0.0;
-    theta_right_ = 0.0;
-    phase_ratio_(0) = 0.0;
-    phase_ratio_(1) = 1.0;
-  }
-  else if((fabs(obs_pack.command(0)) > 0.1 && fabs(obs_pack.command(0)) <= 1.0) | 
-           fabs(obs_pack.command(1)) > 0.1 | fabs(obs_pack.command(2)) > 0.1)
-  { // walk gait
-    theta_left_ = 0.5;
-    theta_right_ = 0.0;
-    phase_ratio_(0) = 0.4;
-    phase_ratio_(1) = 0.6;
-  }
-  else if(fabs(obs_pack.command(0)) > 1.0)
-  { // run gait
-    theta_left_ = 0.5;
-    theta_right_ = 0.0;
-    phase_ratio_(0) = 0.6;
-    phase_ratio_(1) = 0.4;
-  }
-  // calc clock_input
-  gait_time_ += control_dt_;
-  if (gait_time_ > (gait_period_ + (control_dt_ / 2.0))) {
-    gait_time_ = control_dt_;
-  }
-  phi_ = gait_time_ / gait_period_;
-  clock_input_(0) = sin(2 * M_PI * (phi_+theta_left_) / num_cycle_timesteps_);
-  clock_input_(1) = sin(2 * M_PI * (phi_+theta_right_) / num_cycle_timesteps_);
-
   VectorT obs(single_obs_size_);
   obs.setZero();
   VectorT command_scaled(3);
@@ -170,7 +117,10 @@ bool HumanoidWalkPolicy::InferUnsync(
   }
   else
   {
-    command_scaled(0) = obs_pack.command(0) * obs_scale_lin_vel_;
+    command_scaled(0) = obs_pack.command(0) * 2.0;
+    if(command_scaled(0) < -0.5)
+      command_scaled(0) = -0.5;
+    command_scaled(0) *= obs_scale_lin_vel_;
   }
   if(fabs(obs_pack.command(1)) <= 0.1)
   {
@@ -178,7 +128,7 @@ bool HumanoidWalkPolicy::InferUnsync(
   }
   else
   {
-    command_scaled(1) = obs_pack.command(1) * obs_scale_lin_vel_;
+    command_scaled(1) = obs_pack.command(1) * 0.3 * obs_scale_lin_vel_;
   }
   if(fabs(obs_pack.command(2)) <= 0.1)
   {
@@ -186,11 +136,9 @@ bool HumanoidWalkPolicy::InferUnsync(
   }
   else
   {
-    command_scaled(2) = obs_pack.command(2) * obs_scale_ang_vel_;
+    command_scaled(2) = obs_pack.command(2) * 0.3 * obs_scale_ang_vel_;
   }
-  // command_scaled.segment(0, 2) =
-  //     obs_pack.command.segment(0, 2) * obs_scale_lin_vel_;
-  // command_scaled(2) = obs_pack.command(2) * obs_scale_ang_vel_;
+  
   obs.segment(0, 3) = command_scaled * obs_scale_command_;
   obs.segment(3, 12) =
       (obs_pack.joint_pos - joint_default_position_) * obs_scale_dof_pos_;
@@ -198,8 +146,6 @@ bool HumanoidWalkPolicy::InferUnsync(
   obs.segment(27, 12) = last_action_;
   obs.segment(39, 3) = obs_pack.ang_vel * obs_scale_ang_vel_;
   obs.segment(42, 3) = obs_pack.proj_gravity * obs_scale_proj_gravity_;
-  obs.segment(45, 2) = clock_input_;
-  obs.segment(47, 2) = phase_ratio_;
 
   if (!inference_done_.load()) {
     input_queue_.enqueue(obs);
@@ -320,8 +266,6 @@ void HumanoidWalkPolicy::CreateLog(YAML::Node const &config) {
   // Get headers
   std::vector<std::string> headers;
 
-  headers.push_back("gait_time");
-  headers.push_back("phi");
   headers.push_back("command_vel_x");
   headers.push_back("command_vel_y");
   headers.push_back("command_vel_w");
@@ -340,10 +284,6 @@ void HumanoidWalkPolicy::CreateLog(YAML::Node const &config) {
   headers.push_back("prog_gravity_x");
   headers.push_back("prog_gravity_y");
   headers.push_back("prog_gravity_z");
-  headers.push_back("clock_input_0");
-  headers.push_back("clock_input_1");
-  headers.push_back("phase_ratio_0");
-  headers.push_back("phase_ratio_1");
   headers.push_back("inference_time_ms");
 
   csv_logger_ = std::make_shared<CsvLogger>(logger_file, headers);
@@ -353,9 +293,6 @@ void HumanoidWalkPolicy::WriteLog(
     ProprioceptiveObservation<float> const &obs_pack) {
   std::vector<CsvLogger::Number> datas;
 
-  
-  datas.push_back(gait_time_);
-  datas.push_back(phi_);
 
   for (size_t i = 0; i < 3; ++i) {
     datas.push_back(obs_pack.command(i));
@@ -374,12 +311,6 @@ void HumanoidWalkPolicy::WriteLog(
   }
   for (size_t i = 0; i < 3; ++i) {
     datas.push_back(obs_pack.proj_gravity(i));
-  }
-  for (size_t i = 0; i < clock_input_.size(); ++i) {
-    datas.push_back(clock_input_(i));
-  }
-  for (size_t i = 0; i < phase_ratio_.size(); ++i) {
-    datas.push_back(phase_ratio_(i));
   }
   datas.push_back(inference_time_);
 

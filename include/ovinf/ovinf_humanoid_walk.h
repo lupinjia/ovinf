@@ -90,15 +90,7 @@ class HumanoidWalkPolicy : public BasePolicy<float> {
 
   // Infer data
   std::map<std::string, size_t> joint_names_;
-  float gait_period_;
-  float gait_time_;
-  float phi_;
-  float num_cycle_timesteps_;
   float control_dt_;
-  float theta_left_;
-  float theta_right_;
-  VectorT clock_input_;
-  VectorT phase_ratio_;
   VectorT joint_default_position_;
 
   size_t single_obs_size_;
