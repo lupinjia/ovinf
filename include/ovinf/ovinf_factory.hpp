@@ -5,6 +5,7 @@
 #include "ovinf_humanoid.h"
 #include "ovinf_humanoid_stand.h"
 #include "ovinf_humanoid_walk.h"
+#include "ovinf_humanoid_walk_clock.h"
 
 namespace ovinf {
 
@@ -20,6 +21,8 @@ class PolicyFactory {
       return std::make_shared<HumanoidStandPolicy>(config);
     } else if (policy_type == "HumanoidWalk") {
       return std::make_shared<HumanoidWalkPolicy>(config);
+    } else if (policy_type == "HumanoidWalkClock") {
+      return std::make_shared<HumanoidWalkClockPolicy>(config);
     } else {
       throw std::invalid_argument("Unknown policy type: " + policy_type);
     }

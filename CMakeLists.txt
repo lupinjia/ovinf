@@ -20,6 +20,7 @@ add_library(ovinf SHARED
   ${CMAKE_CURRENT_SOURCE_DIR}/src/ovinf/ovinf_humanoid.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/src/ovinf/ovinf_humanoid_stand.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/src/ovinf/ovinf_humanoid_walk.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/ovinf/ovinf_humanoid_walk_clock.cc
 
   ${CMAKE_CURRENT_SOURCE_DIR}/src/utils/priority.c
   ${CMAKE_CURRENT_SOURCE_DIR}/src/utils/stick_core.c
